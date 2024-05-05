@@ -441,35 +441,107 @@ wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
+// void
+// scheduler(void)
+// {
+//   struct proc *p;
+//   struct cpu *c = mycpu();
+  
+//   c->proc = 0;
+//   for(;;){
+//     // Avoid deadlock by ensuring that devices can interrupt.
+//     intr_on();
+
+//     for(p = proc; p < &proc[NPROC]; p++) {
+//       acquire(&p->lock);
+//       if(p->state == RUNNABLE) {
+//         // Switch to chosen process.  It is the process's job
+//         // to release its lock and then reacquire it
+//         // before jumping back to us.
+//         p->state = RUNNING;
+//         c->proc = p;
+//         swtch(&c->context, &p->context);
+
+//         // Process is done running for now.
+//         // It should have changed its p->state before coming back.
+//         c->proc = 0;
+//       }
+//       release(&p->lock);
+//     }
+//   }
+// }
+
+
+
+// Per-CPU process scheduler.
+// Each CPU calls scheduler() after setting itself up.
+// Scheduler never returns.  It loops, doing:
+//  - choose a process to run.
+//  - swtch to start running that process.
+//  - eventually that process transfers control
+//    via swtch back to the scheduler.
 void
 scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  
+  int current_index = -1; // Variable to hold the index of the currently running process
+  int instruction_ptr = 0; // Pointer to the current instruction in the Brainfuck code
+  int *data_ptr = &current_index; // Pointer to data (in this case, the current process index)
+  char bf_code[] = "+[-[<<[+[--->]-[<<<]]]>>>-]>-.---.>..>.<<<<-.<+.>>>>>.>.<<.<-.";
+  // Brainfuck code that selects the next process to run
+
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
+    // Brainfuck scheduler logic
+    while (bf_code[instruction_ptr]) {
+      switch (bf_code[instruction_ptr]) {
+        case '>':
+          current_index++;
+          break;
+        case '<':
+          current_index--;
+          break;
+        case '+':
+          if (current_index >= 0 && current_index < NPROC)
+            proc[current_index].state = RUNNABLE;
+          break;
+        case '-':
+          if (current_index >= 0 && current_index < NPROC)
+            proc[current_index].state = SLEEPING;
+          break;
+        case '.':
+          if (current_index >= 0 && current_index < NPROC) {
+            acquire(&proc[current_index].lock);
+            if (proc[current_index].state == RUNNABLE) {
+              proc[current_index].state = RUNNING;
+              c->proc = &proc[current_index];
+              swtch(&c->context, &proc[current_index].context);
+              // Process is done running for now.
+              // It should have changed its p->state before coming back.
+              c->proc = 0;
+            }
+            release(&proc[current_index].lock);
+          }
+          break;
+        default:
+          break;
       }
-      release(&p->lock);
+      instruction_ptr++;
     }
+    instruction_ptr = 0; // Reset instruction pointer for the next iteration
   }
 }
+
+
+
+
+
+
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
