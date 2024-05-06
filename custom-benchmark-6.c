@@ -139,7 +139,7 @@ int main() {
         num_stopped[i] = 0;
         total_latency[i] = 0.0;
         total_idle_time[i] = 0.0;
-        thread_execution_time[thread_id] = 0.0;
+        thread_execution_time[i] = 0.0;
     }
 
     struct rusage usage;
