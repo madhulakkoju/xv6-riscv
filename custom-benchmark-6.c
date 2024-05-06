@@ -67,6 +67,7 @@ void *faster_thread_function(void *arg)
 
         if (thread_interrupted)
         {
+            num_stopped[thread_id]++;
             printf("Thread %ld interrupted\n", thread_id);
             break;
         }
@@ -130,6 +131,7 @@ void *slower_thread_function(void *arg)
 
         if (thread_interrupted)
         {
+            num_stopped[thread_id]++;
             printf("Thread %ld interrupted\n", thread_id);
             break;
         }
@@ -147,7 +149,7 @@ void *slower_thread_function(void *arg)
 
     total_latency[thread_id] += latency;
     last_execution_time[thread_id] = end_time.tv_sec + (end_time.tv_usec / 1000000.0);
-    num_executions[thread_id]++;
+
 
     double idle_time = (start_time.tv_sec - last_execution_time[thread_id]);
     total_idle_time[thread_id] += idle_time;
