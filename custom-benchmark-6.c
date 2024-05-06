@@ -6,12 +6,12 @@
 #include <unistd.h>
 #include <signal.h> // Include signal header for signal handling
 
-#define NUM_THREADS 10000
+#define NUM_THREADS 1000
 #define NUM_DIRECT_THREADS 5000
 #define NUM_STALLING_THREADS 5000
 
-#define STALLING_EXEC_TIME 5.0
-#define NORMAL_EXEC_TIME 2.0
+#define STALLING_EXEC_TIME 500.0
+#define NORMAL_EXEC_TIME 200.0
 
 double last_execution_time[NUM_THREADS];
 int num_executions[NUM_THREADS];
