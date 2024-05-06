@@ -9,89 +9,85 @@
 #define NUM_DIRECT_THREADS 5000
 #define NUM_STALLING_THREADS 5000
 
-// Global variables to store metrics
 double last_execution_time[NUM_THREADS];
 int num_executions[NUM_THREADS];
 int num_stopped[NUM_THREADS];
 double total_latency[NUM_THREADS];
 double total_idle_time[NUM_THREADS];
-double total_direct_run_time = 0.0;
-double total_stalling_run_time = 0.0;
+double total_fast_thread_run_time = 0.0;
+double total_stalling_thread_run_time = 0.0;
 
-// Function to stall CPU for some time
 void stall_cpu() {
-    // Introduce some delay to simulate CPU stall
     for (int i = 0; i < 10000000; i++) {
-        // Dummy computation
-        double result = 2.0 * 3.0 + i;
+        double result = ( 2.0 * i + 9.9 * i ) % 10000000;
     }
 }
 
-// Function to be executed by each thread
-void *thread_function(void *arg) {
-    // Get thread ID
+void *faster_thread_function(void *arg)  {
     long thread_id = (long)arg;
-
-    // Record the start time
     struct timeval start_time, end_time;
+
     gettimeofday(&start_time, NULL);
 
-    // Perform computation
-    if (thread_id < NUM_DIRECT_THREADS) {
-        // Direct execution thread
-        // Perform some computation without stalling CPU
-        for (int i = 0; i < 10000000; i++) {
-            // Some dummy computation
-            double result = 2.0 * 3.0 + i;
-        }
-    } else {
-        // CPU stalling thread
-        // Stall CPU for some time before performing computation
-        stall_cpu();
-        stall_cpu();
-        stall_cpu();
-        stall_cpu();
-    }
+    stall_cpu();
 
-    // Record the end time
     gettimeofday(&end_time, NULL);
 
-    // Calculate the latency for this execution
     double latency = (end_time.tv_sec - start_time.tv_sec) + 
                      (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
 
-    // Record the latency
     total_latency[thread_id] += latency;
 
-    // Record the time of last execution
-    last_execution_time[thread_id] = end_time.tv_sec + (end_time.tv_usec / 1000000.0);
-
-    // Increment the number of times the thread has been executed
     num_executions[thread_id]++;
 
-    // Calculate the idle time for this execution
+    last_execution_time[thread_id] = end_time.tv_sec + (end_time.tv_usec / 1000000.0);
+    
     double idle_time = (start_time.tv_sec - last_execution_time[thread_id]);
-
-    // Record the idle time
     total_idle_time[thread_id] += idle_time;
 
-    // Calculate the run time for this thread
     double run_time = (end_time.tv_sec - start_time.tv_sec) + 
                      (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
 
-    // Update cumulative run times based on thread type
-    if (thread_id < NUM_DIRECT_THREADS) {
-        // Direct execution thread
-        total_direct_run_time += run_time;
-    } else {
-        // CPU stalling thread
-        total_stalling_run_time += run_time;
-    }
+    total_fast_thread_run_time += run_time;
 
-    // Print thread ID and return
-    printf("Thread %ld completed\n", thread_id);
     pthread_exit(NULL);
 }
+
+void *slower_thread_function(void *arg) {
+    long thread_id = (long)arg;
+    struct timeval start_time, end_time;
+    gettimeofday(&start_time, NULL);
+
+    stall_cpu();
+    stall_cpu();
+    stall_cpu();
+    stall_cpu();
+    stall_cpu();
+
+    gettimeofday(&end_time, NULL);
+
+    double latency = (end_time.tv_sec - start_time.tv_sec) + 
+                     (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
+
+    total_latency[thread_id] += latency;
+    last_execution_time[thread_id] = end_time.tv_sec + (end_time.tv_usec / 1000000.0);
+    num_executions[thread_id]++;
+
+    double idle_time = (start_time.tv_sec - last_execution_time[thread_id]);
+    total_idle_time[thread_id] += idle_time;
+
+    double run_time = (end_time.tv_sec - start_time.tv_sec) + 
+                     (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
+
+    total_stalling_thread_run_time += run_time;
+
+    pthread_exit(NULL);
+}
+
+
+
+
+
 
 int main() {
     pthread_t threads[NUM_THREADS];
@@ -102,14 +98,20 @@ int main() {
     double cpu_usage;
     FILE *output_file;
 
-    // Open output file
-    output_file = fopen("benchmark_metrics.csv", "w");
+    output_file = fopen("benchmark_overall_vals.txt", "w");
     if (output_file == NULL) {
         printf("ERROR: Failed to open output file\n");
         exit(-1);
     }
 
-    // Initialize global variables
+    output_metrics = fopen("benchmark_metrics.csv", "w");
+    if (output_file == NULL) {
+        printf("ERROR: Failed to open output file\n");
+        exit(-1);
+    }
+
+
+
     for (int i = 0; i < NUM_THREADS; i++) {
         last_execution_time[i] = 0.0;
         num_executions[i] = 0;
@@ -118,72 +120,61 @@ int main() {
         total_idle_time[i] = 0.0;
     }
 
-    // Get initial CPU usage
     struct rusage usage;
     getrusage(RUSAGE_SELF, &usage);
     double start_cpu = usage.ru_utime.tv_sec + (usage.ru_utime.tv_usec / 1000000.0);
 
-    // Get start time
     gettimeofday(&start_time, NULL);
 
-    // Create threads
     for (t = 0; t < NUM_THREADS; t++) {
-        printf("Creating thread %ld\n", t);
-        rc = pthread_create(&threads[t], NULL, thread_function, (void *)t);
+
+        if(t % 2 == 0){
+            rc = pthread_create(&threads[t], NULL, faster_thread_function, (void *)t);
+        } else {
+            rc = pthread_create(&threads[t], NULL, slower_thread_function, (void *)t);
+        }
+        
         if (rc) {
             printf("ERROR: return code from pthread_create() is %d\n", rc);
             exit(-1);
         }
     }
 
-    // Wait for all threads to finish
     for (t = 0; t < NUM_THREADS; t++) {
         pthread_join(threads[t], NULL);
     }
 
-    // Get end time
     gettimeofday(&end_time, NULL);
 
-    // Get total execution time
     total_time = (end_time.tv_sec - start_time.tv_sec) + 
                  (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
 
-    // Get final CPU usage
     getrusage(RUSAGE_SELF, &usage);
     double end_cpu = usage.ru_utime.tv_sec + (usage.ru_utime.tv_usec / 1000000.0);
 
-    // Calculate CPU usage during the execution
     cpu_usage = end_cpu - start_cpu;
 
-    // Calculate CPU idle time
     double cpu_idle = total_time - cpu_usage;
-
-    // Calculate latency (time per thread)
     double latency = total_time / NUM_THREADS;
-
-    // Calculate speed (threads per second)
     double speed = NUM_THREADS / total_time;
 
-    // Write metrics to output file
     fprintf(output_file, "Total execution time,%.6f\n", total_time);
     fprintf(output_file, "CPU usage during execution,%.6f\n", cpu_usage);
     fprintf(output_file, "CPU idle time,%.6f\n", cpu_idle);
     fprintf(output_file, "Latency (time per thread),%.6f\n", latency);
     fprintf(output_file, "Speed (threads per second),%.6f\n", speed);
 
-    // Write thread-specific metrics
-    fprintf(output_file, "\nThread-specific metrics:\n");
+    fprintf(output_metrics, "Thread Type, Thread ID,Last execution time,Executions,interrupts by scheduler,Total Latency,Total Idle Time\n");
+
     for (int i = 0; i < NUM_THREADS; i++) {
-        fprintf(output_file, "Thread %d,Last execution time,%.6f,Executions,%d,Stopped by scheduler,%d times,Total Latency,%.6f,Total Idle Time,%.6f\n",
-                i, last_execution_time[i], num_executions[i], num_stopped[i], total_latency[i], total_idle_time[i]);
+        fprintf(output_metrics, "%d,T %d,%.6f,%d,%d,%.6f,%.6f\n",
+                i%2, i, last_execution_time[i], num_executions[i], num_stopped[i], total_latency[i], total_idle_time[i]);
     }
 
-    // Write cumulative run times for each type of thread
     fprintf(output_file, "\nCumulative run times for each type of thread:\n");
     fprintf(output_file, "Total Direct Execution Thread Run Time,%.6f\n", total_direct_run_time);
     fprintf(output_file, "Total CPU Stalling Thread Run Time,%.6f\n", total_stalling_run_time);
 
-    // Close output file
     fclose(output_file);
 
     printf("Benchmark metrics written to benchmark_metrics.csv\n");
