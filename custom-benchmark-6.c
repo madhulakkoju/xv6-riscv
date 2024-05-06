@@ -9,6 +9,9 @@
 #define NUM_DIRECT_THREADS 5000
 #define NUM_STALLING_THREADS 5000
 
+#define STALLING_EXEC_TIME 5.0
+#define NORMAL_EXEC_TIME 2.0
+
 double last_execution_time[NUM_THREADS];
 int num_executions[NUM_THREADS];
 int num_stopped[NUM_THREADS];
@@ -16,6 +19,8 @@ double total_latency[NUM_THREADS];
 double total_idle_time[NUM_THREADS];
 double total_fast_thread_run_time = 0.0;
 double total_stalling_thread_run_time = 0.0;
+
+double thread_execution_time[NUM_THREADS];
 
 void stall_cpu() {
     for (int i = 0; i < 10000000; i++) {
@@ -29,7 +34,18 @@ void *faster_thread_function(void *arg)  {
 
     gettimeofday(&start_time, NULL);
 
-    stall_cpu();
+    while(1){
+        stall_cpu();
+
+        gettimeofday(&end_time, NULL);
+         double run_time = (end_time.tv_sec - start_time.tv_sec) + 
+                     (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
+
+        if( thread_execution_time[thread_id] + run_time >= NORMAL_EXEC_TIME){
+            break;
+        }
+    }
+    
 
     gettimeofday(&end_time, NULL);
 
@@ -47,6 +63,8 @@ void *faster_thread_function(void *arg)  {
 
     double run_time = (end_time.tv_sec - start_time.tv_sec) + 
                      (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
+
+    thread_execution_time[thread_id] += run_time;
 
     total_fast_thread_run_time += run_time;
 
@@ -78,6 +96,8 @@ void *slower_thread_function(void *arg) {
 
     double run_time = (end_time.tv_sec - start_time.tv_sec) + 
                      (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
+
+    thread_execution_time[thread_id] += run_time;
 
     total_stalling_thread_run_time += run_time;
 
@@ -119,6 +139,7 @@ int main() {
         num_stopped[i] = 0;
         total_latency[i] = 0.0;
         total_idle_time[i] = 0.0;
+        thread_execution_time[thread_id] = 0.0;
     }
 
     struct rusage usage;
