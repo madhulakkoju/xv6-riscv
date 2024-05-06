@@ -4,6 +4,7 @@
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <signal.h> // Include signal header for signal handling
 
 #define NUM_THREADS 10000
 #define NUM_DIRECT_THREADS 5000
@@ -22,47 +23,74 @@ double total_stalling_thread_run_time = 0.0;
 
 double thread_execution_time[NUM_THREADS];
 
-void stall_cpu() {
-    for (int i = 0; i < 10000000; i++) {
-        double result = ( 2.0 * i + 9.9 * i ) / 3.0;
+_Thread_local int thread_interrupted = 0; // Declare thread-local variable for interruption flag
+
+// Signal handler to handle interrupt signal
+void handle_interrupt(int signal)
+{
+    thread_interrupted = 1;
+}
+
+void stall_cpu()
+{
+    for (int i = 0; i < 10000000; i++)
+    {
+        double result = (2.0 * i + 9.9 * i) / 3.0;
     }
 }
 
-void *faster_thread_function(void *arg)  {
+void *faster_thread_function(void *arg)
+{
+
+    signal(SIGINT, handle_interrupt);
+
     long thread_id = (long)arg;
+
+    num_executions[thread_id]++;
+
+    if (thread_execution_time[thread_id] >= NORMAL_EXEC_TIME)
+    {
+        pthread_exit(NULL);
+    }
+
     struct timeval start_time, end_time;
 
     gettimeofday(&start_time, NULL);
 
-    while(1){
+    while (1)
+    {
         stall_cpu();
 
         gettimeofday(&end_time, NULL);
-         double run_time = (end_time.tv_sec - start_time.tv_sec) + 
-                     (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
+        double run_time = (end_time.tv_sec - start_time.tv_sec) +
+                          (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
 
-        if( thread_execution_time[thread_id] + run_time >= NORMAL_EXEC_TIME){
+        if (thread_interrupted)
+        {
+            printf("Thread %ld interrupted\n", thread_id);
+            break;
+        }
+
+        if (thread_execution_time[thread_id] + run_time >= NORMAL_EXEC_TIME)
+        {
             break;
         }
     }
-    
 
     gettimeofday(&end_time, NULL);
 
-    double latency = (end_time.tv_sec - start_time.tv_sec) + 
+    double latency = (end_time.tv_sec - start_time.tv_sec) +
                      (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
 
     total_latency[thread_id] += latency;
 
-    num_executions[thread_id]++;
-
     last_execution_time[thread_id] = end_time.tv_sec + (end_time.tv_usec / 1000000.0);
-    
+
     double idle_time = (start_time.tv_sec - last_execution_time[thread_id]);
     total_idle_time[thread_id] += idle_time;
 
-    double run_time = (end_time.tv_sec - start_time.tv_sec) + 
-                     (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
+    double run_time = (end_time.tv_sec - start_time.tv_sec) +
+                      (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
 
     thread_execution_time[thread_id] += run_time;
 
@@ -71,20 +99,50 @@ void *faster_thread_function(void *arg)  {
     pthread_exit(NULL);
 }
 
-void *slower_thread_function(void *arg) {
+void *slower_thread_function(void *arg)
+{
+
+    signal(SIGINT, handle_interrupt);
+
     long thread_id = (long)arg;
+
+    num_executions[thread_id]++;
+
+    if (thread_execution_time[thread_id] >= NORMAL_EXEC_TIME)
+    {
+        pthread_exit(NULL);
+    }
+
     struct timeval start_time, end_time;
     gettimeofday(&start_time, NULL);
 
-    stall_cpu();
-    stall_cpu();
-    stall_cpu();
-    stall_cpu();
-    stall_cpu();
+    while (1)
+    {
+        stall_cpu();
+        stall_cpu();
+        stall_cpu();
+        stall_cpu();
+        stall_cpu();
+
+        gettimeofday(&end_time, NULL);
+        double run_time = (end_time.tv_sec - start_time.tv_sec) +
+                          (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
+
+        if (thread_interrupted)
+        {
+            printf("Thread %ld interrupted\n", thread_id);
+            break;
+        }
+
+        if (thread_execution_time[thread_id] + run_time >= STALLING_EXEC_TIME)
+        {
+            break;
+        }
+    }
 
     gettimeofday(&end_time, NULL);
 
-    double latency = (end_time.tv_sec - start_time.tv_sec) + 
+    double latency = (end_time.tv_sec - start_time.tv_sec) +
                      (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
 
     total_latency[thread_id] += latency;
@@ -94,8 +152,8 @@ void *slower_thread_function(void *arg) {
     double idle_time = (start_time.tv_sec - last_execution_time[thread_id]);
     total_idle_time[thread_id] += idle_time;
 
-    double run_time = (end_time.tv_sec - start_time.tv_sec) + 
-                     (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
+    double run_time = (end_time.tv_sec - start_time.tv_sec) +
+                      (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
 
     thread_execution_time[thread_id] += run_time;
 
@@ -104,12 +162,8 @@ void *slower_thread_function(void *arg) {
     pthread_exit(NULL);
 }
 
-
-
-
-
-
-int main() {
+int main()
+{
     pthread_t threads[NUM_THREADS];
     int rc;
     long t;
@@ -120,20 +174,21 @@ int main() {
     FILE *output_metrics;
 
     output_file = fopen("benchmark_overall_vals.txt", "w");
-    if (output_file == NULL) {
+    if (output_file == NULL)
+    {
         printf("ERROR: Failed to open output file\n");
         exit(-1);
     }
 
     output_metrics = fopen("benchmark_metrics.csv", "w");
-    if (output_file == NULL) {
+    if (output_file == NULL)
+    {
         printf("ERROR: Failed to open output file\n");
         exit(-1);
     }
 
-
-
-    for (int i = 0; i < NUM_THREADS; i++) {
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
         last_execution_time[i] = 0.0;
         num_executions[i] = 0;
         num_stopped[i] = 0;
@@ -148,27 +203,33 @@ int main() {
 
     gettimeofday(&start_time, NULL);
 
-    for (t = 0; t < NUM_THREADS; t++) {
+    for (t = 0; t < NUM_THREADS; t++)
+    {
 
-        if(t % 2 == 0){
+        if (t % 2 == 0)
+        {
             rc = pthread_create(&threads[t], NULL, faster_thread_function, (void *)t);
-        } else {
+        }
+        else
+        {
             rc = pthread_create(&threads[t], NULL, slower_thread_function, (void *)t);
         }
-        
-        if (rc) {
+
+        if (rc)
+        {
             printf("ERROR: return code from pthread_create() is %d\n", rc);
             exit(-1);
         }
     }
 
-    for (t = 0; t < NUM_THREADS; t++) {
+    for (t = 0; t < NUM_THREADS; t++)
+    {
         pthread_join(threads[t], NULL);
     }
 
     gettimeofday(&end_time, NULL);
 
-    total_time = (end_time.tv_sec - start_time.tv_sec) + 
+    total_time = (end_time.tv_sec - start_time.tv_sec) +
                  (end_time.tv_usec - start_time.tv_usec) / 1000000.0;
 
     getrusage(RUSAGE_SELF, &usage);
@@ -188,9 +249,10 @@ int main() {
 
     fprintf(output_metrics, "Thread Type, Thread ID,Last execution time,Executions,interrupts by scheduler,Total Latency,Total Idle Time\n");
 
-    for (int i = 0; i < NUM_THREADS; i++) {
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
         fprintf(output_metrics, "%d,T %d,%.6f,%d,%d,%.6f,%.6f\n",
-                i%2, i, last_execution_time[i], num_executions[i], num_stopped[i], total_latency[i], total_idle_time[i]);
+                i % 2, i, last_execution_time[i], num_executions[i], num_stopped[i], total_latency[i], total_idle_time[i]);
     }
 
     fprintf(output_file, "\nCumulative run times for each type of thread:\n");
