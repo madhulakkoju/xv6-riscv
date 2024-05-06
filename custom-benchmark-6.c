@@ -19,7 +19,7 @@ double total_stalling_thread_run_time = 0.0;
 
 void stall_cpu() {
     for (int i = 0; i < 10000000; i++) {
-        double result = ( 2.0 * i + 9.9 * i ) % 10000000;
+        double result = ( 2.0 * i + 9.9 * i ) / 3.0;
     }
 }
 
@@ -97,6 +97,7 @@ int main() {
     double total_time;
     double cpu_usage;
     FILE *output_file;
+    FILE *output_metrics;
 
     output_file = fopen("benchmark_overall_vals.txt", "w");
     if (output_file == NULL) {
@@ -172,8 +173,8 @@ int main() {
     }
 
     fprintf(output_file, "\nCumulative run times for each type of thread:\n");
-    fprintf(output_file, "Total Direct Execution Thread Run Time,%.6f\n", total_direct_run_time);
-    fprintf(output_file, "Total CPU Stalling Thread Run Time,%.6f\n", total_stalling_run_time);
+    fprintf(output_file, "Total Direct Execution Thread Run Time,%.6f\n", total_fast_thread_run_time);
+    fprintf(output_file, "Total CPU Stalling Thread Run Time,%.6f\n", total_stalling_thread_run_time);
 
     fclose(output_file);
 
